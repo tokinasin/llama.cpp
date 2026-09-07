@@ -2560,6 +2560,11 @@ class TextModel(ModelBase):
 
         self.gguf_writer.add_add_space_prefix(False)
 
+        # The PLaMo tokenizer code defaults to add_bos_token=False, but the shipped tokenizer_config.json
+        # of PLaMo-2 and PLaMo-3 enables it (BOS + text, no EOS), so mirror the config.
+        self.gguf_writer.add_add_bos_token(bool(tokenizer_config.get("add_bos_token", False)))
+        self.gguf_writer.add_add_eos_token(bool(tokenizer_config.get("add_eos_token", False)))
+
 
 class MmprojModel(ModelBase):
     model_type = ModelType.MMPROJ
