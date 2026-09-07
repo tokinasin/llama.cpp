@@ -401,6 +401,8 @@ static const std::map<llm_kv, const char *> LLM_KV_NAMES = {
     { LLM_KV_TOKENIZER_ADD_SEP,                  "tokenizer.ggml.add_sep_token"            },
     { LLM_KV_TOKENIZER_ADD_PREFIX,               "tokenizer.ggml.add_space_prefix"         },
     { LLM_KV_TOKENIZER_REMOVE_EXTRA_WS,          "tokenizer.ggml.remove_extra_whitespaces" },
+    { LLM_KV_TOKENIZER_BREAK_AROUND_CONSECUTIVE_SPACES_THRESHOLD, "tokenizer.ggml.break_around_consecutive_spaces_threshold" },
+    { LLM_KV_TOKENIZER_BREAK_AROUND_REPEATED_CHARS_THRESHOLD,     "tokenizer.ggml.break_around_repeated_chars_threshold"     },
     { LLM_KV_TOKENIZER_PRECOMPILED_CHARSMAP,     "tokenizer.ggml.precompiled_charsmap"     },
     { LLM_KV_TOKENIZER_HF_JSON,                  "tokenizer.huggingface.json"              },
     { LLM_KV_TOKENIZER_RWKV,                     "tokenizer.rwkv.world"                    },

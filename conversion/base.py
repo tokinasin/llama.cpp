@@ -2565,6 +2565,13 @@ class TextModel(ModelBase):
         self.gguf_writer.add_add_bos_token(bool(tokenizer_config.get("add_bos_token", False)))
         self.gguf_writer.add_add_eos_token(bool(tokenizer_config.get("add_eos_token", False)))
 
+        # PLaMo-3 tokenizers pre-segment the text around runs of spaces / repeated characters before the
+        # Unigram DP (AhoCorasick._matcher in tokenization_plamo.py); PLaMo-2 leaves both unset (None).
+        if (threshold := tokenizer_config.get("break_around_consecutive_spaces_threshold")) is not None:
+            self.gguf_writer.add_break_around_consecutive_spaces_threshold(int(threshold))
+        if (threshold := tokenizer_config.get("break_around_repeated_chars_threshold")) is not None:
+            self.gguf_writer.add_break_around_repeated_chars_threshold(int(threshold))
+
 
 class MmprojModel(ModelBase):
     model_type = ModelType.MMPROJ

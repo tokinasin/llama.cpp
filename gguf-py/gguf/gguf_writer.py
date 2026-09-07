@@ -1277,6 +1277,12 @@ class GGUFWriter:
     def add_remove_extra_whitespaces(self, value: bool) -> None:
         self.add_bool(Keys.Tokenizer.REMOVE_EXTRA_WS, value)
 
+    def add_break_around_consecutive_spaces_threshold(self, value: int) -> None:
+        self.add_uint32(Keys.Tokenizer.BREAK_AROUND_CONSECUTIVE_SPACES_THRESHOLD, value)
+
+    def add_break_around_repeated_chars_threshold(self, value: int) -> None:
+        self.add_uint32(Keys.Tokenizer.BREAK_AROUND_REPEATED_CHARS_THRESHOLD, value)
+
     def add_precompiled_charsmap(self, charsmap: bytes) -> None:
         self.add_array(Keys.Tokenizer.PRECOMPILED_CHARSMAP, charsmap)
 

@@ -149,6 +149,8 @@ struct llama_vocab {
     bool get_ignore_merges             () const;
     bool get_clean_spaces              () const;
     bool get_remove_extra_whitespaces  () const;
+    uint32_t get_break_around_consecutive_spaces_threshold() const;
+    uint32_t get_break_around_repeated_chars_threshold    () const;
     bool get_escape_whitespaces        () const;
     bool get_treat_whitespace_as_suffix() const;
     const normalizer_options & get_normalizer_opts() const;

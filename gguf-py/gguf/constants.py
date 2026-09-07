@@ -338,6 +338,8 @@ class Keys:
         ADD_SEP              = "tokenizer.ggml.add_sep_token"
         ADD_PREFIX           = "tokenizer.ggml.add_space_prefix"
         REMOVE_EXTRA_WS      = "tokenizer.ggml.remove_extra_whitespaces"
+        BREAK_AROUND_CONSECUTIVE_SPACES_THRESHOLD = "tokenizer.ggml.break_around_consecutive_spaces_threshold"
+        BREAK_AROUND_REPEATED_CHARS_THRESHOLD     = "tokenizer.ggml.break_around_repeated_chars_threshold"
         PRECOMPILED_CHARSMAP = "tokenizer.ggml.precompiled_charsmap"
         SUPPRESS_TOKENS      = "tokenizer.ggml.suppress_tokens"
         HF_JSON              = "tokenizer.huggingface.json"

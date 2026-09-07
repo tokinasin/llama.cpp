@@ -1365,7 +1365,9 @@ private:
 };
 
 struct llm_tokenizer_plamo2 : llm_tokenizer {
-    llm_tokenizer_plamo2(const llama_vocab & vocab) {
+    llm_tokenizer_plamo2(const llama_vocab & vocab, uint32_t break_around_consecutive_spaces_threshold, uint32_t break_around_repeated_chars_threshold)
+        : break_around_consecutive_spaces_threshold_(break_around_consecutive_spaces_threshold),
+          break_around_repeated_chars_threshold_(break_around_repeated_chars_threshold) {
         build(vocab);
     }
 
@@ -1513,6 +1515,82 @@ struct llm_tokenizer_plamo2 : llm_tokenizer {
             unicode_data.erase(unicode_data.begin());
         }
 
+        if (break_around_consecutive_spaces_threshold_ == 0 && break_around_repeated_chars_threshold_ == 0) {
+            return encode_cpts(unicode_data);
+        }
+
+        // PLaMo-3 tokenizers pre-segment the text before the Unigram DP (AhoCorasick.encode() in
+        // tokenization_plamo.py) by inserting boundary characters with two re.sub() passes:
+        //   1. (<\|plamo:[^|\s]{,64}\|>)  - special-token-looking text becomes its own segment
+        //   2. ((.)\2{N-1,}| {M,})        - a run of at least N identical characters (except '\n'), or
+        //                                   otherwise a run of at least M spaces, becomes its own segment
+        // Matches are found left-to-right without overlap. Since the boundary token never merges with its
+        // neighbours, encoding the segments independently gives the same result as the reference.
+        // Both passes are only active for PLaMo-3 style tokenizers (thresholds present); PLaMo-2 has neither.
+        const size_t n = unicode_data.size();
+        std::vector<bool> cut(n + 1, false);
+
+        // pass 1: <|plamo:...|>
+        {
+            static const uint32_t prefix[] = { '<', '|', 'p', 'l', 'a', 'm', 'o', ':' };
+            const size_t prefix_len = sizeof(prefix) / sizeof(prefix[0]);
+            size_t i = 0;
+            while (i + prefix_len <= n) {
+                if (!std::equal(prefix, prefix + prefix_len, unicode_data.begin() + i)) {
+                    i++;
+                    continue;
+                }
+                size_t j = i + prefix_len;
+                while (j < n && j - (i + prefix_len) < 64 && unicode_data[j] != '|' && !unicode_cpt_flags_from_cpt(unicode_data[j]).is_whitespace) {
+                    j++;
+                }
+                if (j + 1 < n && unicode_data[j] == '|' && unicode_data[j + 1] == '>') {
+                    cut[i]     = true;
+                    cut[j + 2] = true;
+                    i = j + 2;
+                } else {
+                    i++;
+                }
+            }
+        }
+
+        // pass 2: runs of repeated characters / spaces (a run never crosses a boundary from pass 1)
+        {
+            size_t i = 0;
+            while (i < n) {
+                const uint32_t c = unicode_data[i];
+                size_t run = 1;
+                while (i + run < n && unicode_data[i + run] == c && !cut[i + run]) {
+                    run++;
+                }
+
+                const bool is_repeated_chars = break_around_repeated_chars_threshold_ > 0 && c != '\n' && run >= break_around_repeated_chars_threshold_;
+                const bool is_spaces         = break_around_consecutive_spaces_threshold_ > 0 && c == ' ' && run >= break_around_consecutive_spaces_threshold_;
+                if (is_repeated_chars || is_spaces) {
+                    cut[i]       = true;
+                    cut[i + run] = true;
+                }
+
+                // a run that does not match cannot match at any later position either (it only gets shorter)
+                i += run;
+            }
+        }
+
+        std::vector<llama_token> output;
+        size_t seg_start = 0;
+        for (size_t seg_end = 1; seg_end <= n; ++seg_end) {
+            if (seg_end == n || cut[seg_end]) {
+                const std::vector<uint32_t> segment(unicode_data.begin() + seg_start, unicode_data.begin() + seg_end);
+                const std::vector<llama_token> tokens = encode_cpts(segment);
+                output.insert(output.end(), tokens.begin(), tokens.end());
+                seg_start = seg_end;
+            }
+        }
+
+        return output;
+    }
+
+    std::vector<llama_token> encode_cpts(const std::vector<uint32_t> & unicode_data) const {
         if (unicode_data.empty()) {
             return {};
         }
@@ -1631,6 +1709,10 @@ private:
     // Flattened table representing the Trie structure
     // Each row contains: [piece_length, token_id, score, piece_id]
     std::vector<std::vector<int32_t>> table_;
+
+    // PLaMo-3 pre-segmentation thresholds (0 = disabled, e.g. PLaMo-2)
+    uint32_t break_around_consecutive_spaces_threshold_ = 0;
+    uint32_t break_around_repeated_chars_threshold_     = 0;
 };
 
 struct llm_tokenizer_plamo2_session {
@@ -1836,6 +1918,10 @@ struct llama_vocab::impl {
     bool remove_extra_whitespaces   = false;
     bool escape_whitespaces         = true;
     bool treat_whitespace_as_suffix = false;
+
+    // PLaMo-3 tokenizer pre-segmentation thresholds (0 = disabled)
+    uint32_t break_around_consecutive_spaces_threshold = 0;
+    uint32_t break_around_repeated_chars_threshold     = 0;
 
     // BertNormalizer options
     llama_vocab::normalizer_options normalizer_opts;
@@ -2451,6 +2537,9 @@ void llama_vocab::impl::load(llama_model_loader & ml, const LLM_KV & kv) {
 
         ml.get_key(LLM_KV_TOKENIZER_ADD_PREFIX,      add_space_prefix,         false);
         ml.get_key(LLM_KV_TOKENIZER_REMOVE_EXTRA_WS, remove_extra_whitespaces, false);
+
+        ml.get_key(LLM_KV_TOKENIZER_BREAK_AROUND_CONSECUTIVE_SPACES_THRESHOLD, break_around_consecutive_spaces_threshold, false);
+        ml.get_key(LLM_KV_TOKENIZER_BREAK_AROUND_REPEATED_CHARS_THRESHOLD,     break_around_repeated_chars_threshold,     false);
     }
 
     const int token_idx = gguf_find_key(ctx, kv(LLM_KV_TOKENIZER_LIST).c_str());
@@ -3231,7 +3320,7 @@ void llama_vocab::impl::init_tokenizer(enum llama_vocab_type type) {
             tokenizer = std::make_unique<llm_tokenizer_rwkv>(vocab);
             break;
         case LLAMA_VOCAB_TYPE_PLAMO2:
-            tokenizer = std::make_unique<llm_tokenizer_plamo2>(vocab);
+            tokenizer = std::make_unique<llm_tokenizer_plamo2>(vocab, break_around_consecutive_spaces_threshold, break_around_repeated_chars_threshold);
             break;
         case LLAMA_VOCAB_TYPE_TEST:
             tokenizer = std::make_unique<llm_tokenizer>();
@@ -4169,6 +4258,14 @@ bool llama_vocab::get_clean_spaces() const {
 
 bool llama_vocab::get_remove_extra_whitespaces() const {
     return pimpl->remove_extra_whitespaces;
+}
+
+uint32_t llama_vocab::get_break_around_consecutive_spaces_threshold() const {
+    return pimpl->break_around_consecutive_spaces_threshold;
+}
+
+uint32_t llama_vocab::get_break_around_repeated_chars_threshold() const {
+    return pimpl->break_around_repeated_chars_threshold;
 }
 
 bool llama_vocab::get_escape_whitespaces() const {
