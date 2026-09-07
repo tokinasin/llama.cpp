@@ -2482,7 +2482,7 @@ class TextModel(ModelBase):
         if template is not None:
             self.gguf_writer.add_chat_template(template)
 
-    def _set_vocab_plamo(self):
+    def _set_vocab_plamo(self, eot_token: str = "<|plamo:op|>"):
         # PLaMo models use a custom tokenizer with a .jsonl file
         tokenizer_jsonl_path = self.dir_model / "tokenizer.jsonl"
         tokenizer_config_path = self.dir_model / "tokenizer_config.json"
@@ -2555,8 +2555,9 @@ class TextModel(ModelBase):
             token_id = tokens.index(tokenizer_config["unk_token"].encode("utf-8"))
             self.gguf_writer.add_unk_token_id(token_id)
 
-        # Add <|plamo:op|> as EOT to ensure appropriate end of generation
-        self.gguf_writer.add_eot_token_id(4)
+        # The block terminator of the PLaMo structured prompt format ends every generation (<|plamo:op|> in
+        # PFML2 / PLaMo-2, <|plamo:tag|> in PFML3 / PLaMo-3), so register it as EOT.
+        self.gguf_writer.add_eot_token_id(tokens.index(eot_token.encode("utf-8")))
 
         self.gguf_writer.add_add_space_prefix(False)
 

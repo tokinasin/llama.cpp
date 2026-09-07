@@ -172,7 +172,7 @@ class Plamo3Model(TextModel):
             })
 
     def set_vocab(self):
-        self._set_vocab_plamo()
+        self._set_vocab_plamo(eot_token="<|plamo:tag|>")
 
         tokenizer_config_path = self.dir_model / "tokenizer_config.json"
         tokenizer_config = {}
