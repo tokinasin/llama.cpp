@@ -2482,7 +2482,12 @@ class TextModel(ModelBase):
         if template is not None:
             self.gguf_writer.add_chat_template(template)
 
-    def _set_vocab_plamo(self, eot_token: str = "<|plamo:op|>"):
+    def _set_vocab_plamo(
+        self,
+        eot_token: str = "<|plamo:op|>",
+        user_defined_tokens: Iterable[str] = (),
+        normal_tokens: Iterable[str] = (),
+    ):
         # PLaMo models use a custom tokenizer with a .jsonl file
         tokenizer_jsonl_path = self.dir_model / "tokenizer.jsonl"
         tokenizer_config_path = self.dir_model / "tokenizer_config.json"
@@ -2498,6 +2503,8 @@ class TextModel(ModelBase):
         tokens = []
         scores = []
         toktypes = []
+        user_defined_tokens = set(user_defined_tokens)
+        normal_tokens = set(normal_tokens)
 
         with open(tokenizer_jsonl_path, "r", encoding="utf-8") as f:
             for line_num, line in enumerate(f):
@@ -2511,7 +2518,11 @@ class TextModel(ModelBase):
                     tokens.append(token)
                     scores.append(score)
 
-                    if token_type_str == "UNKNOWN":
+                    if token_data[0] in normal_tokens:
+                        toktypes.append(gguf.TokenType.NORMAL)
+                    elif token_data[0] in user_defined_tokens:
+                        toktypes.append(gguf.TokenType.USER_DEFINED)
+                    elif token_type_str == "UNKNOWN":
                         toktypes.append(gguf.TokenType.UNKNOWN)
                     elif token_type_str == "CONTROL":
                         toktypes.append(gguf.TokenType.CONTROL)
